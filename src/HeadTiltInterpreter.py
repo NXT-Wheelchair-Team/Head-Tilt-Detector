@@ -2,9 +2,8 @@ from src import config
 import socket
 import json
 
+
 # TODO: Drop Y axis from all functions
-
-
 class HeadTiltInterpreter:
     @staticmethod
     def get_axis_values(accel_dict, print_values=config.PRINT_RAW_AXIS_VALUES):
@@ -58,13 +57,17 @@ class HeadTiltInterpreter:
 
         return 'x' if dominant == 0 else 'z'
 
-    @staticmethod
-    def make_move_decision(dominant_axis, x_ra, z_ra, calibration_data):
+    @staticmethod     # Returns Voltage To 2 Motors
+    def make_move_decision(dominant_axis, x_ra, z_ra, last_xv, last_zv, calibration_data):
         # if x axis is dominant
+        dom_delta, sub_delta = 0, 0
+
         if dominant_axis == 'x':
             if x_ra > calibration_data['x_max']:
+                dom_delta = calibration_data['x_max'] - x_ra
                 print(config.MOVE_LEFT_MSG)
             elif x_ra < calibration_data['x_min']:
+                dom_delta = calibration_data['x_min'] - x_ra
                 print(config.MOVE_RIGHT_MSG)
             else:
                 print(config.CONTINUE_MSG)
@@ -72,13 +75,49 @@ class HeadTiltInterpreter:
         # if z axis is dominant
         elif dominant_axis == 'z':
             if z_ra > calibration_data['z_max']:
+                dom_delta = calibration_data['z_max'] - z_ra
                 print(config.MOVE_FORWARD_MSG)
             elif z_ra < calibration_data['z_min']:
+                dom_delta = calibration_data['z_min'] - z_ra
                 print(config.MOVE_BACKWARD_MSG)
             else:
                 print(config.CONTINUE_MSG)
         else:
             print('Mistake? Continue?')
+
+        dom_voltage, sub_voltage = 0, 0
+
+        # Primary Voltage Equation: voltage = base voltage * multiplier * [1 or -1 to indicate direction]
+
+        # Limiting Variable Groups:
+        if abs(dom_delta) > config.DOM_HLV:
+            dom_voltage = config.BASE_VOLTAGE * config.DOM_HLV_MULT * (dom_delta/abs(dom_delta))
+        elif abs(dom_delta) > config.DOM_MLV:
+            dom_voltage = config.BASE_VOLTAGE * config.DOM_MLV_MULT * (dom_delta/abs(dom_delta))
+        elif abs(dom_delta) > config.DOM_LLV:
+            dom_voltage = config.BASE_VOLTAGE * config.DOM_LLV_MULT * (dom_delta/abs(dom_delta))
+
+        # Secondary Limiting Variable
+        if abs(sub_delta) > config.SUB_LV:
+            sub_voltage = abs(sub_delta)/abs(dom_delta) * (sub_delta/abs(sub_delta))
+
+        x_voltage = dom_voltage if dominant_axis == 'x' else sub_voltage
+        z_voltage = dom_voltage if dominant_axis == 'z' else sub_voltage
+
+        # This allows driver to return to a relaxed position to continue in the same direction
+        if last_xv > 0 and last_xv > x_voltage:
+            x_voltage = last_xv
+        elif last_xv < 0 and last_xv < x_voltage:
+            x_voltage = last_xv
+
+        if last_zv > 0 and last_zv > z_voltage:
+            z_voltage = last_zv
+        elif last_zv < 0 and last_zv < z_voltage:
+            z_voltage = last_zv
+
+        # TODO: How do we stop? => This currently will never return 0, 0 after it starts
+
+        return x_voltage, z_voltage
 
     def run(self):
         sock = socket.socket(socket.AF_INET,  # Internet
@@ -97,10 +136,14 @@ class HeadTiltInterpreter:
         }
 
         # Read data and decide movement
+        temp_x_voltage, temp_z_voltage = 0, 0
         while True:
             x_ra, y_ra, z_ra = self.get_cluster_avg(sock)  # Rolling averages for live clusters
             dominant = self.calc_dominant_axis(x_ra, z_ra, axis_ranges)
-            self.make_move_decision(dominant, x_ra, z_ra, axis_ranges)
+            x_voltage, z_voltage = self.make_move_decision(
+                dominant, x_ra, z_ra, temp_x_voltage, temp_z_voltage, axis_ranges)
+            print('X Voltage: {} | Z Voltage: {}'.format(x_voltage, z_voltage))
+            temp_x_voltage, temp_z_voltage = x_voltage, z_voltage
 
 
 if __name__ == '__main__':
