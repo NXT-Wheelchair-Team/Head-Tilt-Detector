@@ -8,38 +8,34 @@ class HeadTiltInterpreter:
     @staticmethod
     def get_axis_values(accel_dict, print_values=config.PRINT_RAW_AXIS_VALUES):
         x = accel_dict['data'][0] + 1
-        y = accel_dict['data'][1] + 1
         z = accel_dict['data'][2] + 1
 
         if print_values:
-            print('x: {}, y: {}, z: {}'.format(x - 1, y - 1, z - 1))
+            print('x: {}, z: {}'.format(x - 1, z - 1))
 
-        return x, y, z
+        return x, z
 
     def get_cluster_avg(self, sock, cluster_size=config.NUM_POINTS_PER_ROLLING_AVG,
                         print_cluster=config.PRINT_CLUSTER_VALUES):
         # Axis totals for average
         xt = 0
-        yt = 0
         zt = 0
         for i in range(0, cluster_size + 1):
             data, addr = sock.recvfrom(1024)  # buffer size is 1024 bytes
 
             acc_dict = json.loads(data)
-            x, y, z = self.get_axis_values(acc_dict)
+            x, z = self.get_axis_values(acc_dict)
             xt += x
-            yt += y
             zt += z
 
         # Axis averages
         xa = xt / cluster_size
-        ya = yt / cluster_size
         za = zt / cluster_size
 
         if print_cluster:
-            print('x_avg: {}, y_avg: {}, z_avg: {}'.format(xa - 1, ya - 1, za - 1))
+            print('x_avg: {}, z_avg: {}'.format(xa - 1, za - 1))
 
-        return xa, ya, za
+        return xa, za
 
     def run_calibration(self, sock):
         # Calibration: get mins and maxes for each axis
@@ -58,66 +54,74 @@ class HeadTiltInterpreter:
         return 'x' if dominant == 0 else 'z'
 
     @staticmethod     # Returns Voltage To 2 Motors
-    def make_move_decision(dominant_axis, x_ra, z_ra, last_xv, last_zv, calibration_data):
+    def make_move_decision(dominant_axis, x_ra, z_ra, calibration_data):
         # if x axis is dominant
         dom_delta, sub_delta = 0, 0
 
         if dominant_axis == 'x':
             if x_ra > calibration_data['x_max']:
-                dom_delta = calibration_data['x_max'] - x_ra
-                print(config.MOVE_LEFT_MSG)
+                dom_delta = x_ra - calibration_data['x_max']
+                # print(config.MOVE_LEFT_MSG)
             elif x_ra < calibration_data['x_min']:
-                dom_delta = calibration_data['x_min'] - x_ra
-                print(config.MOVE_RIGHT_MSG)
+                dom_delta = x_ra - calibration_data['x_min']
+                # print(config.MOVE_RIGHT_MSG)
             else:
-                print(config.CONTINUE_MSG)
-
+                pass
+                # print(config.CONTINUE_MSG)
+            if z_ra > calibration_data['z_max']:
+                sub_delta = z_ra - calibration_data['z_max']
+                # print(config.MOVE_FORWARD_MSG)
+            elif z_ra < calibration_data['z_min']:
+                sub_delta = z_ra - calibration_data['z_min']
+                # print(config.MOVE_BACKWARD_MSG)
+            else:
+                pass
         # if z axis is dominant
         elif dominant_axis == 'z':
             if z_ra > calibration_data['z_max']:
-                dom_delta = calibration_data['z_max'] - z_ra
-                print(config.MOVE_FORWARD_MSG)
+                dom_delta = z_ra - calibration_data['z_max']
+                # print(config.MOVE_FORWARD_MSG)
             elif z_ra < calibration_data['z_min']:
-                dom_delta = calibration_data['z_min'] - z_ra
-                print(config.MOVE_BACKWARD_MSG)
+                dom_delta = z_ra - calibration_data['z_min']
+                # print(config.MOVE_BACKWARD_MSG)
             else:
-                print(config.CONTINUE_MSG)
-        else:
-            print('Mistake? Continue?')
+                pass
+                # print(config.CONTINUE_MSG)
+            if x_ra > calibration_data['x_max']:
+                sub_delta = x_ra - calibration_data['x_max']
+                # print(config.MOVE_LEFT_MSG)
+            elif x_ra < calibration_data['x_min']:
+                sub_delta = x_ra - calibration_data['x_min']
+                # print(config.MOVE_RIGHT_MSG)
+            else:
+                pass
 
-        dom_voltage, sub_voltage = 0, 0
+        # Dom axis: x or z, sign, delta
 
-        # Primary Voltage Equation: voltage = base voltage * multiplier * [1 or -1 to indicate direction]
+        dom_delta *= config.DOM_DELTA_MULT
+        sub_delta *= config.SUB_DELTA_MULT
 
-        # Limiting Variable Groups:
-        if abs(dom_delta) > config.DOM_HLV:
-            dom_voltage = config.BASE_VOLTAGE * config.DOM_HLV_MULT * (dom_delta/abs(dom_delta))
-        elif abs(dom_delta) > config.DOM_MLV:
-            dom_voltage = config.BASE_VOLTAGE * config.DOM_MLV_MULT * (dom_delta/abs(dom_delta))
-        elif abs(dom_delta) > config.DOM_LLV:
-            dom_voltage = config.BASE_VOLTAGE * config.DOM_LLV_MULT * (dom_delta/abs(dom_delta))
+        if dom_delta > 1:
+            dom_delta = 1
+        elif dom_delta < -1:
+            dom_delta = -1
 
-        # Secondary Limiting Variable
-        if abs(sub_delta) > config.SUB_LV:
-            sub_voltage = abs(sub_delta)/abs(dom_delta) * (sub_delta/abs(sub_delta))
+        if sub_delta > 1:
+            sub_delta = 1
+        if sub_delta < -1:
+            sub_delta = -1
 
-        x_voltage = dom_voltage if dominant_axis == 'x' else sub_voltage
-        z_voltage = dom_voltage if dominant_axis == 'z' else sub_voltage
+        sub_magnitude = abs(sub_delta / dom_delta) if dom_delta != 0 else 0
+        if sub_delta != 0:
+            sub_magnitude *= -1
 
-        # This allows driver to return to a relaxed position to continue in the same direction
-        if last_xv > 0 and last_xv > x_voltage:
-            x_voltage = last_xv
-        elif last_xv < 0 and last_xv < x_voltage:
-            x_voltage = last_xv
+        x_mag = dom_delta if 'x' is dominant_axis else sub_magnitude
+        z_mag = dom_delta if 'z' is dominant_axis else sub_magnitude
 
-        if last_zv > 0 and last_zv > z_voltage:
-            z_voltage = last_zv
-        elif last_zv < 0 and last_zv < z_voltage:
-            z_voltage = last_zv
+        if x_mag != 0:
+            x_mag *= -1
 
-        # TODO: How do we stop? => This currently will never return 0, 0 after it starts
-
-        return x_voltage, z_voltage
+        return round(x_mag, 3), round(z_mag, 3)
 
     def run(self):
         sock = socket.socket(socket.AF_INET,  # Internet
@@ -125,7 +129,7 @@ class HeadTiltInterpreter:
         sock.bind((config.UDP_IP, config.UDP_PORT))
 
         # Calibration Test to determine deadzone
-        x_avg, y_avg, z_avg = self.run_calibration(sock)
+        x_avg, z_avg = self.run_calibration(sock)
         axis_ranges = {
             'x_min': x_avg * (1 - config.X_DELTA),
             'x_max': x_avg * (1 + config.X_DELTA),
@@ -136,14 +140,12 @@ class HeadTiltInterpreter:
         }
 
         # Read data and decide movement
-        temp_x_voltage, temp_z_voltage = 0, 0
         while True:
-            x_ra, y_ra, z_ra = self.get_cluster_avg(sock)  # Rolling averages for live clusters
+            x_ra, z_ra = self.get_cluster_avg(sock)  # Rolling averages for live clusters
             dominant = self.calc_dominant_axis(x_ra, z_ra, axis_ranges)
-            x_voltage, z_voltage = self.make_move_decision(
-                dominant, x_ra, z_ra, temp_x_voltage, temp_z_voltage, axis_ranges)
-            print('X Voltage: {} | Z Voltage: {}'.format(x_voltage, z_voltage))
-            temp_x_voltage, temp_z_voltage = x_voltage, z_voltage
+            x_percentage, z_percentage = self.make_move_decision(
+                dominant, x_ra, z_ra, axis_ranges)
+            print('X Percentage: {} | Z Percentage: {}'.format(x_percentage, z_percentage))
 
 
 if __name__ == '__main__':
