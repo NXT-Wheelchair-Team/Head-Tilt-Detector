@@ -54,7 +54,7 @@ class HeadTiltInterpreter:
         return 'x' if dominant == 0 else 'z'
 
     @staticmethod     # Returns Voltage To 2 Motors
-    def make_move_decision(dominant_axis, x_ra, z_ra, calibration_data):
+    def get_axis_percentage(dominant_axis, x_ra, z_ra, calibration_data):
         # if x axis is dominant
         dom_delta, sub_delta = 0, 0
 
@@ -143,7 +143,7 @@ class HeadTiltInterpreter:
         while True:
             x_ra, z_ra = self.get_cluster_avg(sock)  # Rolling averages for live clusters
             dominant = self.calc_dominant_axis(x_ra, z_ra, axis_ranges)
-            x_percentage, z_percentage = self.make_move_decision(
+            x_percentage, z_percentage = self.get_axis_percentage(
                 dominant, x_ra, z_ra, axis_ranges)
             print('X Percentage: {} | Z Percentage: {}'.format(x_percentage, z_percentage))
 
