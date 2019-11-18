@@ -4,7 +4,6 @@ import socket
 import json
 
 
-# TODO: Drop Y axis from all functions
 class HeadTiltInterpreter:
     @staticmethod
     def get_axis_values(accel_dict, print_values=config.PRINT_RAW_AXIS_VALUES):
@@ -151,13 +150,14 @@ class HeadTiltInterpreter:
             x_percentage, z_percentage = self.get_axis_percentage(
                 dominant, x_ra, z_ra, axis_ranges)
 
-            dict = {
-                'tilt': z_percentage,
-                'roll': x_percentage
-            }
+            if config.OUTPUT_DATA:
+                dict = {
+                    'tilt': z_percentage,
+                    'roll': x_percentage
+                }
 
-            send_json = json.dumps(dict)
-            output_socket.send_string(send_json)
+                send_json = json.dumps(dict)
+                output_socket.send_string(send_json)
 
 
 if __name__ == '__main__':
