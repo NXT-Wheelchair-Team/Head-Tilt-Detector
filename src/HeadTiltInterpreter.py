@@ -1,9 +1,9 @@
 from src import config
+import zmq
 import socket
 import json
 
 
-# TODO: Drop Y axis from all functions
 class HeadTiltInterpreter:
     @staticmethod
     def get_axis_values(accel_dict, print_values=config.PRINT_RAW_AXIS_VALUES):
@@ -20,6 +20,8 @@ class HeadTiltInterpreter:
         # Axis totals for average
         xt = 0
         zt = 0
+
+        # Read in data from OpenBCI
         for i in range(0, cluster_size + 1):
             data, addr = sock.recvfrom(1024)  # buffer size is 1024 bytes
 
@@ -40,7 +42,9 @@ class HeadTiltInterpreter:
     def run_calibration(self, sock):
         # Calibration: get mins and maxes for each axis
         print('Calibrating...')
-        return self.get_cluster_avg(sock, config.NUM_CALIBRATION_POINTS)
+        avgs = self.get_cluster_avg(sock, config.NUM_CALIBRATION_POINTS)
+        print('Calibration Complete')
+        return avgs
 
     @staticmethod
     def calc_dominant_axis(x_ra, z_ra, calibration_data):
@@ -124,12 +128,16 @@ class HeadTiltInterpreter:
         return round(x_mag, 3), round(z_mag, 3)
 
     def run(self):
-        sock = socket.socket(socket.AF_INET,  # Internet
-                             socket.SOCK_DGRAM)  # UDP
-        sock.bind((config.UDP_IP, config.UDP_PORT))
+        accel_socket = socket.socket(socket.AF_INET,  # Internet
+                                     socket.SOCK_DGRAM)  # UDP
+        accel_socket.bind((config.UDP_IP, config.UDP_ACCEL_PORT))
+
+        context = zmq.Context()
+        output_socket = context.socket(zmq.PAIR)
+        output_socket.connect('tcp://{}:{}'.format(config.OUTPUT_IP, config.OUTPUT_PORT))
 
         # Calibration Test to determine deadzone
-        x_avg, z_avg = self.run_calibration(sock)
+        x_avg, z_avg = self.run_calibration(accel_socket)
         axis_ranges = {
             'x_min': x_avg * (1 - config.X_DELTA),
             'x_max': x_avg * (1 + config.X_DELTA),
@@ -141,11 +149,21 @@ class HeadTiltInterpreter:
 
         # Read data and decide movement
         while True:
-            x_ra, z_ra = self.get_cluster_avg(sock)  # Rolling averages for live clusters
+            x_ra, z_ra = self.get_cluster_avg(accel_socket)  # Rolling averages for live clusters
             dominant = self.calc_dominant_axis(x_ra, z_ra, axis_ranges)
             x_percentage, z_percentage = self.get_axis_percentage(
                 dominant, x_ra, z_ra, axis_ranges)
-            print('X Percentage: {} | Z Percentage: {}'.format(x_percentage, z_percentage))
+
+            if config.OUTPUT_DATA:
+                dict = {
+                    'tilt': z_percentage,
+                    'roll': x_percentage
+                }
+                send_json = json.dumps(dict)
+                output_socket.send_string(send_json)
+
+                if config.PRINT_OUT:
+                    print(send_json)
 
 
 if __name__ == '__main__':
