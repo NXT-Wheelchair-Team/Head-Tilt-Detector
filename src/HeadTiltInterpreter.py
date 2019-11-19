@@ -20,6 +20,8 @@ class HeadTiltInterpreter:
         # Axis totals for average
         xt = 0
         zt = 0
+
+        # Read in data from OpenBCI
         for i in range(0, cluster_size + 1):
             data, addr = sock.recvfrom(1024)  # buffer size is 1024 bytes
 
@@ -40,7 +42,9 @@ class HeadTiltInterpreter:
     def run_calibration(self, sock):
         # Calibration: get mins and maxes for each axis
         print('Calibrating...')
-        return self.get_cluster_avg(sock, config.NUM_CALIBRATION_POINTS)
+        avgs = self.get_cluster_avg(sock, config.NUM_CALIBRATION_POINTS)
+        print('Calibration Complete')
+        return avgs
 
     @staticmethod
     def calc_dominant_axis(x_ra, z_ra, calibration_data):
@@ -155,9 +159,12 @@ class HeadTiltInterpreter:
                     'tilt': z_percentage,
                     'roll': x_percentage
                 }
-
                 send_json = json.dumps(dict)
                 output_socket.send_string(send_json)
+
+                if config.PRINT_OUT:
+                    print(send_json)
+
 
 
 if __name__ == '__main__':
