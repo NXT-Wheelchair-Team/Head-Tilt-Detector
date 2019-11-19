@@ -166,7 +166,6 @@ class HeadTiltInterpreter:
                     print(send_json)
 
 
-
 if __name__ == '__main__':
     interpreter = HeadTiltInterpreter()
     interpreter.run()

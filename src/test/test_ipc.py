@@ -9,7 +9,7 @@ def run(sock):
 
 if __name__ == '__main__':
     ip = '127.0.0.1'  # INPUT_IP
-    port = 5557  # INPUT_PORT
+    port = 5557       # INPUT_PORT
     out_port = 12345
 
     context = zmq.Context()
