@@ -160,7 +160,7 @@ class HeadTiltInterpreter:
                     'roll': x_percentage
                 }
                 send_json = json.dumps(dict)
-                output_socket.send_string(send_json)
+                output_socket.send_json(send_json)
 
                 if config.PRINT_OUT:
                     print(send_json)
