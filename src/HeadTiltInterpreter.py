@@ -59,7 +59,7 @@ class HeadTiltInterpreter:
 
     @staticmethod     # Returns Voltage To 2 Motors
     def get_axis_percentage(dominant_axis, x_ra, z_ra, calibration_data):
-        # if x axis is dominant
+        # if x axis is dominant (roll)
         dom_delta, sub_delta = 0, 0
 
         if dominant_axis == 'x':
@@ -80,7 +80,8 @@ class HeadTiltInterpreter:
                 # print(config.MOVE_BACKWARD_MSG)
             else:
                 pass
-        # if z axis is dominant
+
+        # if z axis is dominant (tilt)
         elif dominant_axis == 'z':
             if z_ra > calibration_data['z_max']:
                 dom_delta = z_ra - calibration_data['z_max']
@@ -130,6 +131,7 @@ class HeadTiltInterpreter:
         #       Might just be negative as soon as there is a non-zero roll value
         #       I THINK when z is the sub, it is negative
         #       I THINK line 123 acts as a temporary patch to this error.
+        #       BACK LEFT still broken
         return round(x_mag, 3), round(z_mag, 3)
 
     def run(self):
