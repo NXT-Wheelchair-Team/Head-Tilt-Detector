@@ -120,11 +120,16 @@ class HeadTiltInterpreter:
             sub_magnitude *= -1
 
         x_mag = dom_delta if 'x' is dominant_axis else sub_magnitude
-        z_mag = dom_delta if 'z' is dominant_axis else sub_magnitude
+        z_mag = dom_delta if 'z' is dominant_axis else sub_magnitude * -1
 
         if x_mag != 0:
             x_mag *= -1
 
+        # TODO: It appears that when the dominant axis goes from z to x, the z percentage flips to negative
+        #       It returns to positive when the tilt increases again.
+        #       Might just be negative as soon as there is a non-zero roll value
+        #       I THINK when z is the sub, it is negative
+        #       I THINK line 123 acts as a temporary patch to this error.
         return round(x_mag, 3), round(z_mag, 3)
 
     def run(self):
